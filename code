@@ -1,0 +1,162 @@
+import tensorflow as tf
+print (tf.__version__)
+
+!wget https://github.com/dicodingacademy/assets/releases/download/release/rockpaperscissors.zip
+
+import zipfile,os
+local_zip = 'rockpaperscissors.zip'
+zip_ref = zipfile.ZipFile(local_zip, 'r')
+zip_ref.extractall('/dataset')
+zip_ref.close()
+
+dir_dataset = '/dataset/rockpaperscissors/rps-cv-images'
+
+os.listdir(dir_dataset)
+
+import matplotlib.pyplot as plt
+import pandas as pd
+%matplotlib inline
+datarock = len(os.listdir('/dataset/rockpaperscissors/rps-cv-images/rock'))
+datapaper = len(os.listdir('/dataset/rockpaperscissors/rps-cv-images/paper'))
+datascissors = len(os.listdir('/dataset/rockpaperscissors/rps-cv-images/scissors'))
+
+data = pd.DataFrame({'Kelompok' : ['Rock', 'Paper', 'Scissors'], 'Jumlah' : [datarock, datapaper, datascissors]})
+ax = data.plot(x = 'Kelompok', y = 'Jumlah', color = ['brown', 'grey', 'pink'], kind = 'bar', title ='Jumlah Data Setiap Kelompok' , rot=0, figsize=(12, 6), legend=False)
+ax.set_ylabel('Jumlah', fontsize=18)
+bars = plt.bar(data.Kelompok, data.Jumlah, width=0.2, bottom=None, align='center', data=None, color = ['brown', 'grey', 'pink'])
+for idx, (Kelompok, Jumlah) in data.iterrows():
+    plt.annotate(f'{Jumlah}\n', xy=(Kelompok, Jumlah), ha='center', va='center')
+
+import glob
+totaldata = len(list(glob.iglob("/dataset/rockpaperscissors/rps-cv-images/*/*.*", recursive=True)))
+print("Total data: ",totaldata)
+
+val_size = 0.4
+
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+Train_datagen = ImageDataGenerator(
+    rotation_range = 30,
+    brightness_range = [0.2,1.0],
+    shear_range = 0.2,
+    zoom_range = 0.2,
+    horizontal_flip = True,
+    fill_mode = "nearest",
+    rescale = 1./255,
+    validation_split = val_size
+)
+
+Validation_datagen = ImageDataGenerator(
+    rotation_range = 30,
+    brightness_range = [0.2,1.0],
+    shear_range = 0.2,
+    zoom_range = 0.2,
+    horizontal_flip = True,
+    fill_mode = "nearest",
+    rescale = 1./255,
+    validation_split = val_size
+)
+
+train_generator = Train_datagen.flow_from_directory(
+        dir_dataset,
+        target_size=(150, 150), #semua images akan diubah menjadi 150x150 piksel
+        batch_size=16,
+        class_mode='categorical',
+        shuffle = True,
+        subset = 'training')
+ 
+validation_generator = Validation_datagen.flow_from_directory(
+        dir_dataset,
+        target_size=(150, 150), #semua images akan diubah menjadi 150x150 piksel
+        batch_size=16,
+        class_mode='categorical',
+        shuffle = True,
+        subset = 'validation')
+        
+model = tf.keras.models.Sequential([
+    tf.keras.layers.Conv2D(64, (3,3), activation='relu', strides = (1,1), input_shape=(150, 150, 3)),
+    tf.keras.layers.MaxPooling2D(pool_size = (2,2), padding = 'valid'),
+    tf.keras.layers.Conv2D(64, (3,3), activation='relu', strides = (1,1)),
+    tf.keras.layers.MaxPooling2D(pool_size = (2,2), padding = 'valid'),
+    tf.keras.layers.Conv2D(128, (3,3), activation='relu', strides = (1,1)),
+    tf.keras.layers.MaxPooling2D(pool_size = (2,2), padding = 'valid'),
+    tf.keras.layers.Conv2D(128, (3,3), activation='relu', strides = (1,1)),
+    tf.keras.layers.MaxPooling2D(pool_size = (2,2), padding = 'valid'),
+    tf.keras.layers.Flatten(),
+    tf.keras.layers.Dropout(0.1),
+    tf.keras.layers.Dense(256, activation='relu'),
+    tf.keras.layers.Dense(3, activation='softmax')
+])
+
+print(model.summary())
+
+accuracy_threshold = 0.97
+class AccCallback(tf.keras.callbacks.Callback): 
+    def on_epoch_end(self, epoch, logs={}): 
+        if(logs.get('accuracy') > accuracy_threshold):   
+          print("\nAkurasi mencapai %2.2f%%, jadi training dihentikan." %(accuracy_threshold*100))   
+          self.model.stop_training = True
+          
+from tensorflow.keras.optimizers import Adamax
+Adamax(learning_rate=10e-3, name='Adamax') 
+model.compile(loss='categorical_crossentropy',
+              optimizer='Adamax',
+              metrics=['accuracy'])
+              
+batch_size=16
+train_CNN = model.fit(
+      train_generator,
+      steps_per_epoch=1314//batch_size,
+      epochs=20,
+      validation_data=validation_generator,
+      validation_steps=874//batch_size,
+      verbose=2,
+      callbacks=[AccCallback()])
+      
+loss_CNN = train_CNN.history['loss']
+val_loss_CNN = train_CNN.history['val_loss']
+acc_CNN = train_CNN.history['accuracy']
+val_accuracy_CNN = train_CNN.history['val_accuracy']
+epochs_range = range(len(acc_CNN))
+
+plt.figure(figsize=(10, 7))
+plt.subplot(2, 1, 1)
+plt.plot(epochs_range, loss_CNN, label='Training Loss')
+plt.plot(epochs_range, val_loss_CNN, label='Validation Loss')
+plt.legend(loc='upper right')
+plt.title('Loss Model CNN')
+plt.show()
+
+plt.figure(figsize=(10, 7))
+plt.subplot(2, 1, 2)
+plt.plot(epochs_range, acc_CNN, label='Training Accuracy')
+plt.plot(epochs_range, val_accuracy_CNN, label='Validation Accuracy')
+plt.legend(loc='lower right')
+plt.title('Akurasi Model CNN')
+
+import numpy as np
+from keras.preprocessing import image
+from google.colab import files 
+import matplotlib.image as mpimg
+%matplotlib inline
+
+uploaded = files.upload()
+
+for fn in uploaded.keys():
+  path = fn
+  img = image.load_img(path, target_size=(150,150))
+  imgplot = plt.imshow(img)
+  x = image.img_to_array(img)
+  x = np.expand_dims(x, axis=0)
+ 
+  images = np.vstack([x])
+  classes = model.predict(images, batch_size=10)
+  
+  print(fn)
+  if classes[0][0]==1:
+    print('paper')
+  elif classes[0][1]==1:
+    print('rock')
+  elif classes [0][2]==1:
+    print('scissors')
+  else:
+    print('unknown')
